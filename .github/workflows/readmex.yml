@@ -1,0 +1,44 @@
+name: ReadmeX event push
+on:
+  issues:
+    types: [opened, closed, reopened, edited]
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [opened, closed, reopened, ready_for_review]
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Forward event to ReadmeX
+        env:
+          READMEX_SECRET: ${{ secrets.READMEX_WEBHOOK_SECRET }}
+          READMEX_URL: https://houses-collecting-roulette-importantly.trycloudflare.com/api/webhooks/v1/rmx_hB3B6bP7uHLFdmDGUpDQfYL6Z9WAYrPietig8m0aCow
+        run: |
+          node --input-type=module -e '
+          import { createHmac } from "node:crypto";
+          import { readFileSync, appendFileSync } from "node:fs";
+          const payload = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
+          const event = process.env.GITHUB_EVENT_NAME;
+          const action = payload.action ?? "";
+          const typeFor = (e) => (e === "issues" ? "issue" : e === "issue_comment" ? "comment" : e === "pull_request" ? "change_request" : e);
+          const kind = typeFor(event);
+          let subject = {};
+          const actor = { name: payload.sender?.login ?? "" };
+          if (event === "issues") {
+            subject = { kind: "issue", number: payload.issue.number, title: payload.issue.title, url: payload.issue.html_url, state: payload.issue.state === "closed" ? "closed" : "open" };
+          } else if (event === "issue_comment") {
+            subject = { kind: "comment", number: payload.issue.number, title: (payload.comment.body || "").replace(/\s+/g, " ").slice(0, 200), url: payload.comment.html_url, state: "open" };
+          } else if (event === "pull_request") {
+            subject = { kind: "change_request", number: payload.pull_request.number, title: payload.pull_request.title, url: payload.pull_request.html_url, state: payload.pull_request.merged ? "merged" : payload.pull_request.state };
+          }
+          const body = JSON.stringify({ type: kind, action, subject, actor, occurredAt: new Date().toISOString(), extra: { repository: payload.repository?.full_name ?? "" } });
+          const signature = "sha256=" + createHmac("sha256", process.env.READMEX_SECRET).update(body).digest("hex");
+          const delivery = process.env.GITHUB_RUN_ID + "-" + process.env.GITHUB_RUN_ATTEMPT + "-" + (payload.issue?.number ?? payload.pull_request?.number ?? 0);
+          const res = await fetch(process.env.READMEX_URL, { method: "POST", headers: { "content-type": "application/json", "x-readmex-delivery": delivery, "x-readmex-signature-256": signature }, body });
+          const text = await res.text();
+          console.log("ReadmeX ->", res.status, text);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, "ReadmeX " + res.status + ": " + text + "\n");
+          if (!res.ok) process.exit(1);
+          '
