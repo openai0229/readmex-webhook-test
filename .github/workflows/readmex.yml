@@ -14,7 +14,7 @@ jobs:
       - name: Forward event to ReadmeX
         env:
           READMEX_SECRET: ${{ secrets.READMEX_WEBHOOK_SECRET }}
-          READMEX_URL: https://houses-collecting-roulette-importantly.trycloudflare.com/api/webhooks/v1/rmx_hB3B6bP7uHLFdmDGUpDQfYL6Z9WAYrPietig8m0aCow
+          READMEX_URL: https://readmex.ai/api/webhooks/v1/rmx_eFsFurlI8l21ZaWk70fVnSzbN8R5XL4cs2wbhoPdoD0
         run: |
           node --input-type=module -e '
           import { createHmac } from "node:crypto";
